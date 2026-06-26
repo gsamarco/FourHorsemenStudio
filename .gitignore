@@ -1,0 +1,24 @@
+# Terraform state — can contain secrets in plaintext. NEVER commit.
+*.tfstate
+*.tfstate.*
+
+# Local variable files often hold subscription IDs / secrets.
+*.tfvars
+!*.tfvars.example
+
+# Provider plugins & local working dir.
+.terraform/
+
+# Saved plan output.
+tfplan
+
+# Crash logs.
+crash.log
+
+# Personal / interview-prep notes — keep local, never publish to the portfolio repo.
+AZ-700_STUDY_MAP.md
+INTERVIEW_TALKING_POINTS.md
+PITCH_ONEPAGER.md
+
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it so
+# everyone resolves the same provider versions.
