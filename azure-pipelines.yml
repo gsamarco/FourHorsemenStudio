@@ -20,7 +20,10 @@ trigger:
       - main            # a push to main is the trigger — your git lesson, made real
 
 pool:
-  vmImage: ubuntu-latest   # Microsoft-hosted runner; Terraform is preinstalled
+  vmImage: ubuntu-latest   # Microsoft-hosted runner
+
+variables:
+  TF_VERSION: "1.9.8"      # pin Terraform; both stages install this exact version
 
 stages:
   # =========================================================================
@@ -32,6 +35,19 @@ stages:
       - job: plan
         displayName: "terraform fmt / validate / plan"
         steps:
+          # Hosted agents don't reliably ship Terraform — install a PINNED
+          # version so every run is identical (matches versions.tf philosophy).
+          - task: Bash@3
+            displayName: "Install Terraform $(TF_VERSION)"
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                curl -fsSL -o /tmp/terraform.zip "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                unzip -o /tmp/terraform.zip -d /tmp
+                sudo mv /tmp/terraform /usr/local/bin/terraform
+                terraform version
+
           - task: AzureCLI@2
             displayName: "fmt -> init -> validate -> plan"
             inputs:
@@ -87,6 +103,17 @@ stages:
 
                 - download: current
                   artifact: tfplan        # pull the reviewed plan back
+
+                - task: Bash@3
+                  displayName: "Install Terraform $(TF_VERSION)"
+                  inputs:
+                    targetType: inline
+                    script: |
+                      set -euo pipefail
+                      curl -fsSL -o /tmp/terraform.zip "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                      unzip -o /tmp/terraform.zip -d /tmp
+                      sudo mv /tmp/terraform /usr/local/bin/terraform
+                      terraform version
 
                 - task: AzureCLI@2
                   displayName: "terraform apply tfplan"
