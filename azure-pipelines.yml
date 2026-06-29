@@ -1,0 +1,109 @@
+# ---------------------------------------------------------------------------
+# FourHorsemen Studio — Terraform CI/CD pipeline
+#
+# This is the automated version of the routine you run by hand:
+#   fmt -> validate -> plan  ->  (human approval)  ->  apply
+#
+# Stage 1 (Validate_Plan) runs on every push to main: format check, init,
+# validate, and a saved `plan`. It changes NOTHING in Azure.
+# Stage 2 (Apply) is gated behind a manual approval on the 'production'
+# environment, and applies the EXACT plan that was reviewed.
+#
+# Auth: no `az login` here. The 'azure-fourhorsemen' service connection
+# hands the service principal's creds to the AzureCLI task, which exposes
+# them so Terraform's azurerm provider/backend can authenticate.
+# ---------------------------------------------------------------------------
+
+trigger:
+  branches:
+    include:
+      - main            # a push to main is the trigger — your git lesson, made real
+
+pool:
+  vmImage: ubuntu-latest   # Microsoft-hosted runner; Terraform is preinstalled
+
+stages:
+  # =========================================================================
+  # STAGE 1 — validate + plan (read-only; safe to run on every push)
+  # =========================================================================
+  - stage: Validate_Plan
+    displayName: "Validate & Plan"
+    jobs:
+      - job: plan
+        displayName: "terraform fmt / validate / plan"
+        steps:
+          - task: AzureCLI@2
+            displayName: "fmt -> init -> validate -> plan"
+            inputs:
+              azureSubscription: "azure-fourhorsemen"   # the service connection, by name
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true                 # expose SP creds to the script
+              inlineScript: |
+                set -euo pipefail
+
+                # Map the service principal's creds into the env vars the
+                # azurerm provider AND backend both read. Nothing is hardcoded.
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+
+                # Fill var.subscription_id without a tfvars file.
+                export TF_VAR_subscription_id="$ARM_SUBSCRIPTION_ID"
+
+                terraform version
+                terraform fmt -check          # fails the build if code isn't formatted
+                terraform init                # connects to the azurerm remote-state backend
+                terraform validate            # syntax + internal consistency
+                terraform plan -out=tfplan    # save the EXACT plan we'll apply later
+
+          # Hand the saved plan to Stage 2 so apply runs precisely what was reviewed.
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish saved plan"
+            inputs:
+              targetPath: "$(System.DefaultWorkingDirectory)/tfplan"
+              artifact: tfplan
+
+  # =========================================================================
+  # STAGE 2 — apply (gated; only runs after a human approves the environment)
+  # =========================================================================
+  - stage: Apply
+    displayName: "Apply (manual approval)"
+    dependsOn: Validate_Plan
+    condition: succeeded()
+    jobs:
+      - deployment: apply
+        displayName: "terraform apply (approved plan)"
+        # 'environment: production' is what triggers the APPROVAL GATE.
+        # The approval check itself is configured on this environment in the
+        # ADO UI (Pipelines -> Environments -> production -> Approvals).
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self          # deployment jobs don't auto-checkout
+
+                - download: current
+                  artifact: tfplan        # pull the reviewed plan back
+
+                - task: AzureCLI@2
+                  displayName: "terraform apply tfplan"
+                  inputs:
+                    azureSubscription: "azure-fourhorsemen"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      set -euo pipefail
+
+                      export ARM_CLIENT_ID="$servicePrincipalId"
+                      export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                      export ARM_TENANT_ID="$tenantId"
+                      export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                      export TF_VAR_subscription_id="$ARM_SUBSCRIPTION_ID"
+
+                      terraform init
+                      # Apply the saved plan from Stage 1 (no re-planning).
+                      terraform apply "$(Pipeline.Workspace)/tfplan/tfplan"
