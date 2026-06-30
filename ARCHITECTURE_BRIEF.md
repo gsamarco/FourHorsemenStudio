@@ -56,16 +56,22 @@ Designed to **minimize spend** — performance on active work, cents on the arch
 
 ---
 
-## Build plan (Terraform · IaC · "Approach A")
+## Build status (Terraform · IaC · "Approach A")
 
-| Phase | Scope | Action |
+Built and deployed — not theoretical. Current state:
+
+| Area | Scope | Status |
 |---|---|---|
-| **1 — Networking foundation** | VNet, subnets, NSGs, Bastion, routing | **APPLY** (cheap, safe, demoable) |
-| **2 — Storage** | ANF capacity pool/volume + Blob lifecycle policy | **WRITE + PLAN** (don't run ANF) |
-| **3 — GPU compute** | NV-series VMs, full + fractional, on-demand | **WRITE + PLAN** (don't run GPU) |
-| **NetDevOps layer** | Terraform modules, remote state, CI/CD pipeline | applied to the cheap parts |
+| **Networking foundation** | VNet, role subnets, NSGs, routing | ✅ deployed & live |
+| **Hub-spoke + private access** | VNet peering, private endpoints, Private DNS | ✅ deployed & live |
+| **Storage** | Blob + lifecycle policy (live); ANF pool/volume (plan-only) | ✅ Blob live · 📝 ANF plan-only |
+| **Monitoring** | VNet flow logs, Log Analytics, Traffic Analytics, alerts | ✅ deployed & live |
+| **GPU compute** | NV-series VMs, full + fractional, on-demand | 📝 written, validated plan-only |
+| **Edge / connectivity** | Azure Firewall, App Gateway + WAF, Site-to-Site VPN | 📝 written, validated plan-only |
+| **NetDevOps** | Remote state (locked) + Azure DevOps CI/CD pipeline | ✅ live — push → plan → approval → apply |
 
-**Lab-vs-production rule:** the expensive resources (ANF, GPU VMs) are written as
-**production-accurate Terraform and `plan`-only — never applied** — so we learn and demonstrate the
-real IaC at **$0**. Only the cheap networking foundation is applied. Each resource gets an inline
-**cost estimate** comment as we build it.
+**Lab-vs-production rule:** the expensive resources (ANF, GPU VMs, Firewall, App Gateway) are written
+as **production-accurate Terraform and validated `plan`-only — never applied** — so the real IaC is
+proven at **~$0** before any production spend. The cheap, foundational layers are deployed for real,
+and all changes flow through the CI/CD pipeline. Every resource carries an inline **cost-estimate**
+comment.
