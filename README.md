@@ -82,29 +82,60 @@ Designed **cost-down from the start, not optimized after the fact**:
 - **Feature-flag lifecycle** — billable resources flip on/off via a boolean (`enable_*`), safe-by-
   default (off = no surprise spend).
 - **Remote state** — centralized in a locked Azure Storage backend; shareable and pipeline-ready.
-- **CI/CD** — the manual `fmt → validate → plan → apply` workflow automates into an **Azure DevOps
-  pipeline** with gated approvals (infra changes treated like ITIL change management).
+- **CI/CD** — the manual `fmt → validate → plan → apply` workflow runs as a gated **Azure DevOps
+  pipeline** (see below); infra changes are treated like ITIL change management.
+
+## CI/CD Pipeline (Azure DevOps)
+
+Every push to `main` triggers a two-stage pipeline that automates the manual Terraform loop:
+
+```
+git push ──► Stage 1: Validate & Plan ──► ⏸ manual approval ──► Stage 2: Apply
+             fmt · init · validate · plan       (human gate)       apply the saved plan
+             (read-only — safe)                                    (the only writes happen here)
+```
+
+- **No credentials on the runner** — the pipeline authenticates to Azure as a **scoped service
+  principal** (Contributor) through an Azure DevOps service connection. No `az login`, no secrets
+  in the repo; the secret lives encrypted in the connection and is referenced by name.
+- **Plan/apply split** — Stage 1 saves the *exact* plan as a pipeline artifact; Stage 2 applies
+  that artifact, so **what's approved is what's applied** — no drift between review and execution.
+- **Human approval gate** — `apply` is blocked behind a manual approval on a `production`
+  environment; the reviewer reads the plan before any change reaches Azure.
+- **Reproducible tooling** — the Terraform version is pinned and installed per run.
+
+The result: a single audited, gated path for every infrastructure change — push → plan →
+human approval → apply.
 
 ## Deployed vs. plan-only (Approach A)
 
 | Component | State |
 |---|---|
-| VNet, subnets, NSGs | ✅ applied |
-| Blob storage + lifecycle | ✅ applied |
-| Remote state backend | ✅ applied |
-| Bastion / VPN Gateway | 📝 written, flag-gated (demo on demand) |
-| Azure Firewall / NetApp Files / GPU VMs | 📝 written, validated `plan`-only |
+| VNet, role subnets, NSGs | ✅ applied |
+| Hub-spoke VNet peering | ✅ applied |
+| Blob storage + lifecycle policy | ✅ applied |
+| Private endpoint + Private DNS (Blob) | ✅ applied |
+| Monitoring — VNet flow logs, Log Analytics, Traffic Analytics, alerts | ✅ applied |
+| Remote state backend (Azure Storage, locked) | ✅ applied |
+| **Azure DevOps CI/CD pipeline** | ✅ **built & running** |
+| Bastion / P2S VPN Gateway | 📝 written, flag-gated (demo on demand) |
+| Azure Firewall · NetApp Files · GPU VMs · App Gateway + WAF · Site-to-Site VPN | 📝 written, validated `plan`-only |
 
 ## Tech stack
 **Terraform** (`azurerm` ~> 4.0) · **Microsoft Azure** · Azure DevOps (CI/CD) · Bash / Azure CLI
 
 ## Roadmap
-- [x] Phase 1 — networking foundation
+- [x] Phase 1 — networking foundation (VNet, subnets, NSGs)
 - [x] Phase 2 — storage (Blob lifecycle live, ANF plan-only)
 - [x] Phase 3 — GPU compute (plan-only)
+- [x] Private endpoints + Private DNS · hub-spoke peering
+- [x] Monitoring & observability (flow logs, Log Analytics, Traffic Analytics, alerts)
 - [x] Remote state backend
-- [ ] Azure DevOps CI/CD pipeline
-- [ ] Optional live Bastion / GPU demos
+- [x] Azure DevOps CI/CD pipeline (plan → approval → apply)
+- [ ] Optional live Bastion / GPU demos + ANF benchmark
+
+> Exercises all five **AZ-700** (Azure Network Engineer Associate) domains hands-on —
+> core networking, connectivity, application delivery, private access, and monitoring/security.
 
 ---
 
