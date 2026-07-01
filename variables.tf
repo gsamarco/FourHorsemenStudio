@@ -111,10 +111,18 @@ variable "enable_appgw" {
 }
 
 variable "vpn_shared_key" {
-  description = "Pre-shared key (PSK) for the Site-to-Site IPsec tunnel. Lab placeholder; in production source from Key Vault and never commit a real key."
+  description = "Pre-shared key (PSK) for the Site-to-Site IPsec tunnel. No real default: supply via TF_VAR_vpn_shared_key (production: an azurerm_key_vault_secret data source) only when enable_gateway = true. Empty is fine while the gateway is off."
   type        = string
-  default     = "lab-placeholder-psk-change-me"
+  default     = ""
   sensitive   = true
+
+  # Red-team #1: never let the tunnel deploy with the committed placeholder or an
+  # empty key. Enforced ONLY when enable_gateway = true, so plan-only / gateway-off
+  # runs — and the CI plan stage, which supplies no PSK — are unaffected.
+  validation {
+    condition     = !var.enable_gateway || (length(var.vpn_shared_key) >= 16 && var.vpn_shared_key != "lab-placeholder-psk-change-me")
+    error_message = "When enable_gateway = true, vpn_shared_key must be a real secret of at least 16 characters (not empty, not the placeholder). Supply it via TF_VAR_vpn_shared_key or a Key Vault data source."
+  }
 }
 
 # ---- P2S VPN client config (only needed when enable_gateway = true) -------
