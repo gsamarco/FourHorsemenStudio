@@ -77,6 +77,20 @@ locals {
           source_address_prefix      = local.subnets["AzureBastionSubnet"].cidr
           destination_address_prefix = "*"
         },
+        # Red-team #5: deny everything else from within the VNet/hub. Azure's
+        # default AllowVnetInBound would otherwise let ANY subnet reach the edit
+        # VMs on ANY port; this restores least-privilege (admin only via Bastion).
+        {
+          name                       = "Deny-Other-Vnet-In"
+          priority                   = 200
+          direction                  = "Inbound"
+          access                     = "Deny"
+          protocol                   = "*"
+          destination_port_range     = "*"
+          destination_port_ranges    = null
+          source_address_prefix      = "VirtualNetwork"
+          destination_address_prefix = "*"
+        },
       ]
     }
     management = {
@@ -90,6 +104,20 @@ locals {
           destination_port_range     = null
           destination_port_ranges    = ["22", "3389"]
           source_address_prefix      = local.subnets["AzureBastionSubnet"].cidr
+          destination_address_prefix = "*"
+        },
+        # Red-team #5: same deny-other-VNet rule as editing/storage. The
+        # management/jump plane must be reachable only via Bastion, not from any
+        # compromised box elsewhere in the VNet or peered hub.
+        {
+          name                       = "Deny-Other-Vnet-In"
+          priority                   = 200
+          direction                  = "Inbound"
+          access                     = "Deny"
+          protocol                   = "*"
+          destination_port_range     = "*"
+          destination_port_ranges    = null
+          source_address_prefix      = "VirtualNetwork"
           destination_address_prefix = "*"
         },
       ]

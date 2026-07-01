@@ -19,6 +19,8 @@ crash.log
 AZ-700_STUDY_MAP.md
 INTERVIEW_TALKING_POINTS.md
 PITCH_ONEPAGER.md
+CEO_COVER_NOTE.md
+*.pdf
 
 # NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it so
 # everyone resolves the same provider versions.
