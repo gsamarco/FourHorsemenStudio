@@ -29,6 +29,21 @@ resource "azurerm_storage_account" "archive" {
 
   min_tls_version = "TLS1_2" # baseline security posture
 
+  # Red-team #6: recovery path for pre-release media. Versioning + a 30-day
+  # soft-delete window mean a blob (or a whole wrapped project) can be recovered
+  # after an accidental or malicious delete. (Disabling public/shared-key access
+  # is a separate prod-hardening step — the private endpoint already exists in
+  # private_link.tf; flipping public access off needs an in-network runner.)
+  blob_properties {
+    versioning_enabled = true
+    delete_retention_policy {
+      days = 30
+    }
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
+
   tags = local.tags
 }
 

@@ -90,9 +90,10 @@ Designed **cost-down from the start, not optimized after the fact**:
 Every push to `main` triggers a two-stage pipeline that automates the manual Terraform loop:
 
 ```
-git push ──► Stage 1: Validate & Plan ──► ⏸ manual approval ──► Stage 2: Apply
-             fmt · init · validate · plan       (human gate)       apply the saved plan
-             (read-only — safe)                                    (the only writes happen here)
+push / PR ──► Verify ──► Validate & Plan ──► ⏸ manual approval ──► Apply
+              tests,      fmt · init ·         (human gate)          apply the
+              $0, no      validate · plan                            saved plan
+              creds       (read-only)          (only writes here)
 ```
 
 - **No credentials on the runner** — the pipeline authenticates to Azure as a **scoped service
@@ -106,6 +107,26 @@ git push ──► Stage 1: Validate & Plan ──► ⏸ manual approval ──
 
 The result: a single audited, gated path for every infrastructure change — push → plan →
 human approval → apply.
+
+## Testing & guardrails
+
+Every change is checked **before** it can reach Azure, at **$0 and with no credentials**:
+
+- **Mocked-provider tests** — a suite under [`tests/`](tests/) runs `terraform plan` against *fake*
+  Azure providers (`mock_provider`), so it validates the config — including the plan-only Firewall /
+  ANF / GPU / App Gateway resources — without ever deploying them, without an Azure login, and
+  without cost. Run locally with `./scripts/verify.sh` (fmt → validate → test).
+- **Credential-free CI gate** — that same suite runs as the pipeline's **Verify** stage on every
+  PR, with **no service connection attached**, so there's nothing to leak on an unreviewed change.
+  The credentialed plan/apply stages run only on pushes to `main`.
+- **Plan-only guard** — pulling an expensive resource into a plan requires an explicit
+  `-var="confirm_expensive_resources=true"`. A stray `enable_*` flag in a `tfvars` file fails the
+  build *before* the apply gate, not after — "plan-only" is a real control, not a comment.
+- **Cost circuit-breaker** — an Azure budget alerts at 50 / 80 / 100 % of a monthly cap, so a
+  forgotten flag can't quietly run up spend.
+
+> This repo was **red-teamed** and every finding remediated — each fix backed by a test that
+> **fails before the change and passes after**. See the pull-request history.
 
 ## Deployed vs. plan-only (Approach A)
 
