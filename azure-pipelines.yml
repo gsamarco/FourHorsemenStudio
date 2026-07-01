@@ -19,6 +19,14 @@ trigger:
     include:
       - main            # a push to main is the trigger — your git lesson, made real
 
+# Run the credential-free Verify stage on every PR to main as well. Verify needs
+# no service connection, so it's safe on an unreviewed PR (mitigates finding #3);
+# the credentialed Validate_Plan / Apply stages are gated to main pushes only.
+pr:
+  branches:
+    include:
+      - main
+
 pool:
   vmImage: ubuntu-latest   # Microsoft-hosted runner
 
@@ -27,10 +35,42 @@ variables:
 
 stages:
   # =========================================================================
-  # STAGE 1 — validate + plan (read-only; safe to run on every push)
+  # STAGE 0 — Verify: fmt / validate / mocked-provider terraform test.
+  # NO service connection -> NO Azure credentials, so it's safe to run on every
+  # PR, including unreviewed ones. This is the credential-free gate (finding #3)
+  # and the policy-as-code / test layer (finding #15).
+  # =========================================================================
+  - stage: Verify
+    displayName: "Verify (fmt / validate / terraform test — no credentials)"
+    jobs:
+      - job: verify
+        displayName: "fmt / validate / mocked-provider tests ($0)"
+        steps:
+          - task: Bash@3
+            displayName: "Install Terraform $(TF_VERSION)"
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                curl -fsSL -o /tmp/terraform.zip "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                unzip -o /tmp/terraform.zip -d /tmp
+                sudo mv /tmp/terraform /usr/local/bin/terraform
+                terraform version
+
+          - task: Bash@3
+            displayName: "Run verification suite (scripts/verify.sh)"
+            inputs:
+              targetType: inline
+              script: bash scripts/verify.sh
+
+  # =========================================================================
+  # STAGE 1 — validate + plan (read-only; runs on pushes to main, after Verify)
   # =========================================================================
   - stage: Validate_Plan
     displayName: "Validate & Plan"
+    dependsOn: Verify
+    # Credentialed stages run only on real pushes to main, never on a PR.
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - job: plan
         displayName: "terraform fmt / validate / plan"
